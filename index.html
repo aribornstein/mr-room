@@ -15,6 +15,15 @@
         font-family: sans-serif;
         z-index: 100;
       }
+      #ar-button {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        font-size: 16px;
+        z-index: 100;
+      }
     </style>
     <!-- Import map to resolve "three" for RATK -->
     <script type="importmap">
@@ -30,13 +39,19 @@
       Virtual Wallpaper Overlay<br>
       Room dimensions will be logged in the console.
     </div>
+    <!-- Custom AR start button -->
+    <button id="ar-button">Enter AR</button>
     
     <!-- Load modules -->
     <script type="module">
-      // Import three.js, ARButton, and RATK.
       import * as THREE from 'https://unpkg.com/three@0.153.0/build/three.module.js';
-      import { ARButton } from 'https://unpkg.com/three@0.153.0/examples/jsm/webxr/ARButton.js';
       import { RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
+
+      // Check if WebXR is available
+      if (!navigator.xr) {
+        console.error("WebXR not available on this device/browser.");
+        document.getElementById('info').innerText = "WebXR not available on this device/browser.";
+      }
 
       // Create renderer with WebXR enabled
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -44,30 +59,37 @@
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
 
-      // Use three.js's ARButton without requesting "dom-overlay".
-      document.body.appendChild(
-        ARButton.createButton(renderer, {
-          sessionInit: {
-            requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
-          },
-          // Prevent any dom-overlay features from being requested.
-          optionalFeatures: []
-        })
-      );
+      // Custom AR button handler (bypassing ARButton to avoid dom-overlay)
+      const arButton = document.getElementById('ar-button');
+      arButton.addEventListener('click', () => {
+        console.log("AR button clicked.");
+        const sessionInit = {
+          requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
+          // No optionalFeatures are requested.
+        };
+        navigator.xr.requestSession('immersive-ar', sessionInit)
+          .then(session => {
+            console.log("AR session started.");
+            renderer.xr.setSession(session);
+          })
+          .catch(err => {
+            console.error("Failed to start AR session", err);
+          });
+      });
 
       // Create scene and camera
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(
         70, window.innerWidth / window.innerHeight, 0.1, 1000
       );
-      camera.position.set(0, 1.6, 0); // Typical eye level
+      camera.position.set(0, 1.6, 0);
       scene.add(camera);
 
       // Initialize RATK and add its root to the scene
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
 
-      // Preload a wallpaper texture (you can change this URL)
+      // Preload a wallpaper texture (adjust URL if needed)
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
