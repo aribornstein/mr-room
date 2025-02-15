@@ -52,7 +52,7 @@
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
       
-      // Set up the renderer with alpha enabled.
+      // Set up the renderer.
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
@@ -79,7 +79,7 @@
       
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 1.6, 0); // Typical eye level
+      camera.position.set(0, 1.6, 0);
       scene.add(camera);
       
       // Initialize RATK.
@@ -93,7 +93,7 @@
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Create a passthrough material to force objects invisible.
+      // Passthrough material to hide non-wall geometry.
       const passthroughMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
@@ -101,21 +101,24 @@
       });
       passthroughMaterial.colorWrite = false;
       
-      // Create a room shell material for the walls.
-      // We disable depth testing so they always render on top.
+      // Room shell material for the walls.
       const roomShellMaterial = new THREE.MeshBasicMaterial({
         map: wallpaperTexture,
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.9,
       });
-      roomShellMaterial.depthTest = false;
-      roomShellMaterial.depthWrite = false;
+      // Enable depth testing and use polygonOffset to push the shell slightly back.
+      roomShellMaterial.depthTest = true;
+      roomShellMaterial.depthWrite = true;
+      roomShellMaterial.polygonOffset = true;
+      roomShellMaterial.polygonOffsetFactor = -1;
+      roomShellMaterial.polygonOffsetUnits = -1;
       
       // Global room shell group.
       let roomShell = null;
       
-      // Compute overall room boundary from RATK meshes.
+      // Compute room boundary from RATK meshes.
       function computeRoomBoundary() {
         const overallBox = new THREE.Box3();
         ratk.meshes.forEach(rmesh => {
@@ -125,7 +128,7 @@
             overallBox.union(box);
           }
         });
-        // Optionally expand the box slightly.
+        // Expand slightly.
         overallBox.expandByScalar(0.05);
         const size = new THREE.Vector3();
         overallBox.getSize(size);
@@ -133,10 +136,10 @@
         return overallBox;
       }
       
-      // Create or update the room shell (four walls) based on the room boundary.
+      // Create or update the room shell based on the room boundary.
+      // Walls are positioned exactly at the room boundaries (with a small inset) so that they occlude the wall surfaces.
       function updateRoomShell(box) {
-        // We'll inset the walls slightly (0.01 m) so they fully cover the actual walls.
-        const inset = 0.005;
+        const inset = 0.005; // small inset from the detected boundary
         const min = box.min;
         const max = box.max;
         const centerX = (min.x + max.x) / 2;
@@ -149,31 +152,30 @@
         if (!roomShell) {
           roomShell = new THREE.Group();
           
-          // Left wall at min.x + inset.
+          // Left wall: at min.x + inset.
           const leftGeom = new THREE.PlaneGeometry(wallDepth, wallHeight);
           const leftWall = new THREE.Mesh(leftGeom, roomShellMaterial.clone());
           leftWall.position.set(min.x + inset, centerY, centerZ);
           leftWall.rotation.y = Math.PI / 2;
           
-          // Right wall at max.x - inset.
+          // Right wall: at max.x - inset.
           const rightGeom = new THREE.PlaneGeometry(wallDepth, wallHeight);
           const rightWall = new THREE.Mesh(rightGeom, roomShellMaterial.clone());
           rightWall.position.set(max.x - inset, centerY, centerZ);
           rightWall.rotation.y = -Math.PI / 2;
           
-          // Front wall at min.z + inset.
+          // Front wall: at min.z + inset.
           const frontGeom = new THREE.PlaneGeometry(wallWidth, wallHeight);
           const frontWall = new THREE.Mesh(frontGeom, roomShellMaterial.clone());
           frontWall.position.set(centerX, centerY, min.z + inset);
           frontWall.rotation.y = 0;
           
-          // Back wall at max.z - inset.
+          // Back wall: at max.z - inset.
           const backGeom = new THREE.PlaneGeometry(wallWidth, wallHeight);
           const backWall = new THREE.Mesh(backGeom, roomShellMaterial.clone());
           backWall.position.set(centerX, centerY, max.z - inset);
           backWall.rotation.y = Math.PI;
           
-          // Set high renderOrder so the room shell always draws over interior geometry.
           [leftWall, rightWall, frontWall, backWall].forEach(wall => {
             wall.renderOrder = 100;
           });
@@ -184,7 +186,6 @@
           roomShell.add(backWall);
           scene.add(roomShell);
         } else {
-          // Update existing wall geometries and positions.
           const walls = roomShell.children;
           walls.forEach(wall => wall.geometry.dispose());
           walls[0].geometry = new THREE.PlaneGeometry(wallDepth, wallHeight);
@@ -199,8 +200,7 @@
         }
       }
       
-      // For all RATK-detected planes and meshes, force them to use passthrough material.
-      // This makes sure nothing else is drawn at wall level.
+      // Hide all RATK-detected geometry so that only the room shell shows on the walls.
       function hideObject(object) {
         if (object && object.geometry) {
           object.material = passthroughMaterial;
@@ -228,12 +228,10 @@
         if (rmesh.meshMesh) {
           hideObject(rmesh.meshMesh);
         }
-        // Update room shell based on room boundary.
         const roomBox = computeRoomBoundary();
         updateRoomShell(roomBox);
       };
       
-      // Render loop.
       function render() {
         ratk.update();
         renderer.render(scene, camera);
