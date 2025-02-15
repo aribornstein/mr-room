@@ -53,8 +53,7 @@
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      // Set clear color to transparent:
-      renderer.setClearColor(0x000000, 0);
+      renderer.setClearColor(0x000000, 0); // transparent background
       document.body.appendChild(renderer.domElement);
       
       const arButton = document.getElementById('ar-button');
@@ -90,24 +89,43 @@
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
+      // Custom shader for non-wall planes that outputs full transparency.
+      const passthroughMaterial = new THREE.ShaderMaterial({
+        vertexShader: `
+          void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          void main() {
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+          }
+        `,
+        transparent: true,
+        blending: THREE.NoBlending,
+        depthWrite: false,
+        depthTest: false,
+      });
+      
       // When a new plane is detected, decide how to render it.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh && plane.planeMesh.geometry) {
-            let material;
-            // For walls, use your wallpaper.
-            if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
-                material = new THREE.MeshBasicMaterial({
-                    map: wallpaperTexture,
-                    side: THREE.DoubleSide,
-                    transparent: true,
-                    opacity: 0.9
-                });
-                plane.planeMesh.material = material;
-                plane.planeMesh.needsUpdate = true;  
-            } else{
-                console.log("Plane is not a wall.", plane.semanticLabel || "");
-            }
+          let material;
+          // For walls, use the wallpaper texture.
+          if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
+            material = new THREE.MeshBasicMaterial({
+              map: wallpaperTexture,
+              side: THREE.DoubleSide,
+              transparent: true,
+              opacity: 0.9
+            });
+          } else {
+            // For non-wall surfaces, assign our passthrough material.
+            material = passthroughMaterial;
+          }
+          plane.planeMesh.material = material;
+          plane.planeMesh.needsUpdate = true;
         }
       };
       
