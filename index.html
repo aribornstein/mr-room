@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <title>Virtual Wallpaper & Room Dimensions Prototype</title>
     <style>
-      body { margin: 0; overflow: hidden; }
-      canvas { display: block; }
+      body { margin: 0; overflow: hidden; background: none; }
+      canvas { display: block; background: none; }
       #info {
         position: absolute;
         top: 10px;
@@ -25,7 +25,6 @@
         z-index: 100;
       }
     </style>
-    <!-- Import map to resolve "three" for RATK -->
     <script type="importmap">
       {
         "imports": {
@@ -39,26 +38,25 @@
       Virtual Wallpaper Overlay<br>
       Room dimensions will be logged in the console.
     </div>
-    <!-- Custom AR start button -->
     <button id="ar-button">Enter AR</button>
     
     <script type="module">
       import * as THREE from 'https://unpkg.com/three@0.153.0/build/three.module.js';
       import { RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
-      
-      // Check for WebXR support
+
       if (!navigator.xr) {
         console.error("WebXR not available on this device/browser.");
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
       
-      // Create the renderer and enable WebXR
+      // Create the renderer with alpha enabled and a fully transparent clear color.
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
+      // Set clear color to transparent:
+      renderer.setClearColor(0x000000, 0);
       document.body.appendChild(renderer.domElement);
       
-      // Custom AR button handler (bypassing ARButton to avoid dom-overlay issues)
       const arButton = document.getElementById('ar-button');
       arButton.addEventListener('click', () => {
         console.log("AR button clicked.");
@@ -68,7 +66,6 @@
         navigator.xr.requestSession('immersive-ar', sessionInit)
           .then(session => {
             console.log("AR session started.");
-            // Set the reference space type to 'local' for compatibility with mesh detection
             renderer.xr.setReferenceSpaceType('local');
             renderer.xr.setSession(session);
           })
@@ -77,32 +74,28 @@
           });
       });
       
-      // Create scene and camera
       const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(
-        70, window.innerWidth / window.innerHeight, 0.1, 1000
-      );
+      const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
       camera.position.set(0, 1.6, 0); // Typical eye level
       scene.add(camera);
       
-      // Initialize RATK (Reality Accelerator Toolkit) and add its root to the scene
+      // Initialize RATK and add its root to the scene.
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Preload a wallpaper texture (change the URL if needed)
+      // Load the wallpaper texture.
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // When a new plane is detected, apply wallpaper only if it's a wall.
-      // For non-wall surfaces, disable color writing to let the AR passthrough be visible.
+      // When a new plane is detected, decide how to render it.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh && plane.planeMesh.geometry) {
           let material;
-          // Check semanticLabel – adjust this condition based on how your device identifies walls.
+          // For walls, use your wallpaper.
           if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
             material = new THREE.MeshBasicMaterial({
               map: wallpaperTexture,
@@ -111,21 +104,27 @@
               opacity: 0.9
             });
           } else {
-            // For non-wall surfaces, create a material that won't write any color.
-            material = new THREE.MeshBasicMaterial({
-              transparent: true,
-              opacity: 0,
-              side: THREE.DoubleSide
+            // For non-wall surfaces, use a shader that discards fragments.
+            material = new THREE.ShaderMaterial({
+              vertexShader: `
+                void main() {
+                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+              `,
+              fragmentShader: `
+                void main() {
+                  discard;
+                }
+              `,
+              transparent: true
             });
-            material.colorWrite = false; // Prevents drawing any color.
-            console.log("Non-wall plane detected:", plane.semanticLabel.toLowerCase() || "unknown");
           }
           plane.planeMesh.material = material;
           plane.planeMesh.needsUpdate = true;
         }
       };
       
-      // Utility: Compute overall room boundary from detected meshes and log dimensions.
+      // Log room dimensions when a new mesh is detected.
       function computeRoomBoundary() {
         const overallBox = new THREE.Box3();
         ratk.meshes.forEach(rmesh => {
@@ -137,28 +136,24 @@
         });
         const size = new THREE.Vector3();
         overallBox.getSize(size);
-        console.log(
-          `Room dimensions (meters): width: ${size.x.toFixed(2)}, height: ${size.y.toFixed(2)}, depth: ${size.z.toFixed(2)}`
-        );
+        console.log(`Room dimensions (meters): width: ${size.x.toFixed(2)}, height: ${size.y.toFixed(2)}, depth: ${size.z.toFixed(2)}`);
         return overallBox;
       }
       
-      // When a new mesh is detected, compute and log room dimensions.
       ratk.onMeshAdded = (rmesh) => {
         console.log("New mesh detected:", rmesh);
         computeRoomBoundary();
       };
       
-      // Animation loop: update RATK and render the scene on each frame.
+      // Render loop.
       function render() {
         ratk.update();
         renderer.render(scene, camera);
       }
       renderer.setAnimationLoop(render);
       
-      // Handle window resize events
       window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.aspect = window.innerWidth/window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
       });
