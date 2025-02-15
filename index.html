@@ -139,12 +139,8 @@
       // Create or update the room shell based on the room boundary.
       // Walls are positioned exactly at the room boundaries (with a small inset) so that they occlude the wall surfaces.
       function updateRoomShell(box) {
-<<<<<<< HEAD
-        const inset = 0.005; // small inset from the detected boundary
-=======
         // We'll inset the walls slightly (0.01 m) so they fully cover the actual walls.
-        const inset = 0.01;
->>>>>>> parent of e411a07 (Refactor room shell inset value for improved wall coverage accuracy)
+        const inset = 0.001;
         const min = box.min;
         const max = box.max;
         const centerX = (min.x + max.x) / 2;
