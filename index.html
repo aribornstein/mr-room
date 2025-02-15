@@ -2,25 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebXR Room Prototype – Place Box & Border</title>
+    <title>Virtual Wallpaper & Room Dimensions Prototype</title>
     <style>
       body { margin: 0; overflow: hidden; }
       canvas { display: block; }
-      #box-controls {
+      #info {
         position: absolute;
-        top: 20px;
-        left: 20px;
-        background: rgba(255, 255, 255, 0.8);
+        top: 10px;
+        left: 10px;
+        background: rgba(255,255,255,0.8);
         padding: 10px;
-        border-radius: 4px;
+        font-family: sans-serif;
         z-index: 100;
       }
-      #box-controls input {
-        width: 50px;
-        margin-right: 5px;
-      }
     </style>
-    <!-- Import map to resolve "three" module for RATK -->
+    <!-- Import map to resolve "three" for RATK -->
     <script type="importmap">
       {
         "imports": {
@@ -30,61 +26,66 @@
     </script>
   </head>
   <body>
-    <!-- UI for placing a box -->
-    <div id="box-controls">
-      <div>
-        <label for="xCoord">X:</label>
-        <input type="number" id="xCoord" step="0.1" value="0">
-      </div>
-      <div>
-        <label for="yCoord">Y:</label>
-        <input type="number" id="yCoord" step="0.1" value="1.6">
-      </div>
-      <div>
-        <label for="zCoord">Z:</label>
-        <input type="number" id="zCoord" step="0.1" value="0">
-      </div>
-      <button id="placeBox">Place Box</button>
+    <div id="info">
+      Virtual Wallpaper Overlay<br>
+      Room dimensions will be logged in the console.
     </div>
-
+    
     <!-- Load modules -->
     <script type="module">
+      // Import three.js, ARButton, and RATK.
       import * as THREE from 'https://unpkg.com/three@0.153.0/build/three.module.js';
-      // Import RATK (it will internally import "three" via our import map)
-      import { RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
-      // Import three.js ARButton from examples
       import { ARButton } from 'https://unpkg.com/three@0.153.0/examples/jsm/webxr/ARButton.js';
+      import { RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
 
       // Create renderer with WebXR enabled
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
 
-      // Use three.js's ARButton to create the session start button
+      // Use three.js's ARButton to create an AR session start button with required features.
       document.body.appendChild(
         ARButton.createButton(renderer, {
           requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
         })
       );
 
-      // Create scene and camera
+      // Create a scene and camera
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(
         70, window.innerWidth / window.innerHeight, 0.1, 1000
       );
-      camera.position.set(0, 1.6, 0); // Typical user height
+      camera.position.set(0, 1.6, 0); // Typical eye level
       scene.add(camera);
 
       // Initialize RATK and add its root to the scene
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
 
-      // Global variables for room boundary and border helper
-      let roomBoundary = null;
-      let roomBorderHelper = null;
+      // Preload a wallpaper texture (change URL as desired)
+      const textureLoader = new THREE.TextureLoader();
+      const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
+        wallpaperTexture.wrapS = THREE.RepeatWrapping;
+        wallpaperTexture.wrapT = THREE.RepeatWrapping;
+      });
 
-      // Utility: Compute overall room boundary from detected meshes
+      // When a new plane is detected, overlay it with a wallpaper material.
+      ratk.onPlaneAdded = (plane) => {
+        console.log("New plane detected:", plane);
+        if (plane.planeMesh && plane.planeMesh.geometry) {
+          const wallpaperMaterial = new THREE.MeshBasicMaterial({
+            map: wallpaperTexture,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9
+          });
+          plane.planeMesh.material = wallpaperMaterial;
+          plane.planeMesh.needsUpdate = true;
+        }
+      };
+
+      // Utility: Compute the overall room boundary from detected meshes and log its dimensions.
       function computeRoomBoundary() {
         const overallBox = new THREE.Box3();
         ratk.meshes.forEach(rmesh => {
@@ -94,55 +95,21 @@
             overallBox.union(box);
           }
         });
-        roomBoundary = overallBox;
         const size = new THREE.Vector3();
         overallBox.getSize(size);
         console.log(
-          `Room dimensions (m): width: ${size.x.toFixed(2)}, height: ${size.y.toFixed(2)}, depth: ${size.z.toFixed(2)}`
+          `Room dimensions (meters): width: ${size.x.toFixed(2)}, height: ${size.y.toFixed(2)}, depth: ${size.z.toFixed(2)}`
         );
-        // Update the visual border helper
-        if (roomBorderHelper) {
-          scene.remove(roomBorderHelper);
-        }
-        roomBorderHelper = new THREE.Box3Helper(overallBox, 0xffff00);
-        scene.add(roomBorderHelper);
         return overallBox;
       }
 
-      // Update room boundary whenever a new mesh is detected
+      // When a new mesh is detected, compute and log room dimensions.
       ratk.onMeshAdded = (rmesh) => {
         console.log("New mesh detected:", rmesh);
         computeRoomBoundary();
       };
 
-      // Allow user to place a box at specified coordinates,
-      // but only if within the room boundary.
-      document.getElementById('placeBox').addEventListener('click', () => {
-        const x = parseFloat(document.getElementById('xCoord').value) || 0;
-        const y = parseFloat(document.getElementById('yCoord').value) || 0;
-        const z = parseFloat(document.getElementById('zCoord').value) || 0;
-        const point = new THREE.Vector3(x, y, z);
-
-        if (roomBoundary) {
-          if (!roomBoundary.containsPoint(point)) {
-            alert("Cannot place box: the specified coordinates are outside the room boundary.");
-            return;
-          }
-        } else {
-          alert("Room boundary not determined yet. Please try again in a moment.");
-          return;
-        }
-
-        const boxSize = 0.3; // 30cm cube
-        const boxGeometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-        const boxMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-        const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
-        boxMesh.position.set(x, y, z);
-        scene.add(boxMesh);
-        console.log(`Placed box at (${x}, ${y}, ${z})`);
-      });
-
-      // Animation loop: update RATK and render the scene
+      // Animation loop: update RATK and render the scene.
       function animate() {
         renderer.setAnimationLoop(render);
         ratk.update();
@@ -151,10 +118,9 @@
       function render() {
         renderer.render(scene, camera);
       }
-
       animate();
 
-      // Handle window resize events
+      // Handle window resize
       window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
