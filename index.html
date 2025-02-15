@@ -97,12 +97,12 @@
       });
       
       // When a new plane is detected, apply wallpaper only if it's a wall.
-      // For non-wall planes, use a fully transparent material.
+      // For non-wall surfaces, disable color writing to let the AR passthrough be visible.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh && plane.planeMesh.geometry) {
           let material;
-          // Check semanticLabel – adjust this check based on how your environment identifies walls.
+          // Check semanticLabel – adjust this condition based on how your device identifies walls.
           if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
             material = new THREE.MeshBasicMaterial({
               map: wallpaperTexture,
@@ -111,12 +111,13 @@
               opacity: 0.9
             });
           } else {
-            // For non-wall surfaces, use a fully transparent material
+            // For non-wall surfaces, create a material that won't write any color.
             material = new THREE.MeshBasicMaterial({
               transparent: true,
               opacity: 0,
               side: THREE.DoubleSide
             });
+            material.colorWrite = false; // Prevents drawing any color.
           }
           plane.planeMesh.material = material;
           plane.planeMesh.needsUpdate = true;
