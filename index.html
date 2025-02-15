@@ -136,7 +136,7 @@
       // Create or update the room shell (four walls) based on the room boundary.
       function updateRoomShell(box) {
         // We'll inset the walls slightly (0.01 m) so they fully cover the actual walls.
-        const inset = 0.01;
+        const inset = 0.005;
         const min = box.min;
         const max = box.max;
         const centerX = (min.x + max.x) / 2;
