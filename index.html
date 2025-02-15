@@ -7,8 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Virtual Wallpaper & Room Dimensions Prototype</title>
     <style>
-      body { margin: 0; overflow: hidden;  }
-      canvas { display: block;  }
+      body { margin: 0; overflow: hidden; background: none; }
+      canvas { display: block; background: none; }
       #info {
         position: absolute;
         top: 10px;
@@ -52,11 +52,11 @@
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
       
-      // Create renderer with alpha enabled and a fully transparent clear color.
+      // Create the renderer with alpha enabled and a fully transparent clear color.
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      renderer.setClearColor(0x000000, 0); // clear color fully transparent
+      renderer.setClearColor(0x000000, 0); // fully transparent background
       document.body.appendChild(renderer.domElement);
       
       const arButton = document.getElementById('ar-button');
@@ -78,45 +78,45 @@
       
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 1.6, 0);
+      camera.position.set(0, 1.6, 0); // Typical eye level
       scene.add(camera);
       
       // Initialize RATK and add its root to the scene.
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Load wallpaper texture for wall surfaces.
+      // Load the wallpaper texture for textured surfaces.
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Create a material to force passthrough on non-wall objects.
+      // Create a passthrough material that renders nothing.
       const passthroughMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide
       });
+      // Disable writing to the color buffer so nothing is drawn.
       passthroughMaterial.colorWrite = false;
       
-      // Helper function to update a plane or mesh material.
+      // Helper function: assign wallpaper material if semantic label is one of the allowed types,
+      // otherwise assign passthrough material.
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
           let material;
-          // If the object is labeled as "wall", assign wallpaper material.
-          if (semanticLabel && semanticLabel.toLowerCase() === "wall") {
+          // Labels to texture.
+          const texturedLabels = ["wall", "door", "wall art", "window", "windows"];
+          if (semanticLabel && texturedLabels.includes(semanticLabel.toLowerCase())) {
             material = new THREE.MeshBasicMaterial({
               map: wallpaperTexture,
               side: THREE.DoubleSide,
               transparent: true,
               opacity: 0.9
             });
-            // Optionally set renderOrder if needed:
             object.renderOrder = 0;
           } else {
-            console.log("Non-wall object detected:", semanticLabel.toLowerCase()||"unknown");
-            // Otherwise, assign our passthrough material.
             material = passthroughMaterial;
             object.renderOrder = -100;
           }
@@ -125,7 +125,7 @@
         }
       }
       
-      // When a new plane is detected, update its material based on its semantic label.
+      // Update plane materials when added or updated.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh) {
@@ -133,7 +133,6 @@
         }
       };
       
-      // Also update plane materials if they are updated.
       ratk.onPlaneUpdated = (plane) => {
         console.log("Plane updated:", plane);
         if (plane.planeMesh) {
@@ -141,10 +140,9 @@
         }
       };
       
-      // Also, override non-wall meshes from RATK.
+      // For meshes detected by RATK, update material if needed.
       ratk.onMeshAdded = (rmesh) => {
         console.log("New mesh detected:", rmesh);
-        // Assuming non-wall meshes have no semantic label or are not "wall".
         if (rmesh.meshMesh) {
           updateObjectMaterial(rmesh.meshMesh, rmesh.semanticLabel);
         }
