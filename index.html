@@ -64,7 +64,6 @@
         console.log("AR button clicked.");
         const sessionInit = {
           requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
-          // Do not request any optionalFeatures like "dom-overlay"
         };
         navigator.xr.requestSession('immersive-ar', sessionInit)
           .then(session => {
@@ -97,17 +96,29 @@
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // When a new plane is detected, overlay it with the wallpaper texture.
+      // When a new plane is detected, apply wallpaper only if it's a wall.
+      // For non-wall planes, use a fully transparent material.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh && plane.planeMesh.geometry) {
-          const wallpaperMaterial = new THREE.MeshBasicMaterial({
-            map: wallpaperTexture,
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.9
-          });
-          plane.planeMesh.material = wallpaperMaterial;
+          let material;
+          // Check semanticLabel – adjust this check based on how your environment identifies walls.
+          if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
+            material = new THREE.MeshBasicMaterial({
+              map: wallpaperTexture,
+              side: THREE.DoubleSide,
+              transparent: true,
+              opacity: 0.9
+            });
+          } else {
+            // For non-wall surfaces, use a fully transparent material
+            material = new THREE.MeshBasicMaterial({
+              transparent: true,
+              opacity: 0,
+              side: THREE.DoubleSide
+            });
+          }
+          plane.planeMesh.material = material;
           plane.planeMesh.needsUpdate = true;
         }
       };
