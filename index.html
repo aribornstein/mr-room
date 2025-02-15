@@ -189,7 +189,7 @@
         if (object && object.geometry) {
           let material;
           // These labels will get the wallpaper (but now we use the room shell instead)
-          const texturedLabels = ["wall", "door", "wall art", "window", "windows"];
+          const texturedLabels = ["wall"];
           if (semanticLabel && texturedLabels.includes(semanticLabel.toLowerCase())) {
             material = new THREE.MeshBasicMaterial({
               map: wallpaperTexture,
