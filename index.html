@@ -118,6 +118,7 @@
               side: THREE.DoubleSide
             });
             material.colorWrite = false; // Prevents drawing any color.
+            console.log("Non-wall plane detected:", plane.semanticLabel.toLowerCase() || "unknown");
           }
           plane.planeMesh.material = material;
           plane.planeMesh.needsUpdate = true;
