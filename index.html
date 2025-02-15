@@ -104,23 +104,8 @@
               opacity: 0.9
             });
           } else {
-            // For non-wall surfaces, use a shader that discards fragments.
-            material = new THREE.ShaderMaterial({
-              vertexShader: `
-                void main() {
-                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-              `,
-              fragmentShader: `
-                void main() {
-                  discard;
-                }
-              `,
-              transparent: true
-            });
-          }
-          plane.planeMesh.material = material;
-          plane.planeMesh.needsUpdate = true;
+            // For non-wall surfaces to render any material
+            console.log("Non-wall plane detected:", plane.name, plane.semanticLabel);
         }
       };
       
