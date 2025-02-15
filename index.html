@@ -52,7 +52,7 @@
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
       
-      // Create the renderer with alpha enabled and a fully transparent clear color.
+      // Create the renderer with alpha enabled and a transparent clear color.
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
@@ -85,28 +85,110 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Load the wallpaper texture for textured surfaces.
+      // Load the wallpaper texture for walls, doors, etc.
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Create a passthrough material that renders nothing.
+      // Create a passthrough material for non-textured objects.
       const passthroughMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide
       });
-      // Disable writing to the color buffer so nothing is drawn.
       passthroughMaterial.colorWrite = false;
       
-      // Helper function: assign wallpaper material if semantic label is one of the allowed types,
-      // otherwise assign passthrough material.
+      // --- ROOM SHELL: Create or update wall planes covering the entire room ---
+      let roomShell = null;
+      function updateRoomShell(box) {
+        const min = box.min;
+        const max = box.max;
+        const centerX = (min.x + max.x) / 2;
+        const centerY = (min.y + max.y) / 2;
+        const centerZ = (min.z + max.z) / 2;
+        // Dimensions for walls:
+        const wallHeight = max.y - min.y;
+        const wallDepth = max.z - min.z;
+        const wallWidth = max.x - min.x;
+        
+        if (!roomShell) {
+          roomShell = new THREE.Group();
+          
+          // Left wall: plane geometry width=wallDepth, height=wallHeight.
+          const leftGeom = new THREE.PlaneGeometry(wallDepth, wallHeight);
+          const leftWall = new THREE.Mesh(leftGeom, new THREE.MeshBasicMaterial({
+            map: wallpaperTexture,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9
+          }));
+          leftWall.position.set(min.x, centerY, centerZ);
+          leftWall.rotation.y = Math.PI / 2;
+          
+          // Right wall:
+          const rightGeom = new THREE.PlaneGeometry(wallDepth, wallHeight);
+          const rightWall = new THREE.Mesh(rightGeom, new THREE.MeshBasicMaterial({
+            map: wallpaperTexture,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9
+          }));
+          rightWall.position.set(max.x, centerY, centerZ);
+          rightWall.rotation.y = -Math.PI / 2;
+          
+          // Front wall:
+          const frontGeom = new THREE.PlaneGeometry(wallWidth, wallHeight);
+          const frontWall = new THREE.Mesh(frontGeom, new THREE.MeshBasicMaterial({
+            map: wallpaperTexture,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9
+          }));
+          frontWall.position.set(centerX, centerY, min.z);
+          frontWall.rotation.y = 0;
+          
+          // Back wall:
+          const backGeom = new THREE.PlaneGeometry(wallWidth, wallHeight);
+          const backWall = new THREE.Mesh(backGeom, new THREE.MeshBasicMaterial({
+            map: wallpaperTexture,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9
+          }));
+          backWall.position.set(centerX, centerY, max.z);
+          backWall.rotation.y = Math.PI;
+          
+          roomShell.add(leftWall);
+          roomShell.add(rightWall);
+          roomShell.add(frontWall);
+          roomShell.add(backWall);
+          scene.add(roomShell);
+        } else {
+          // Update existing walls:
+          const walls = roomShell.children;
+          // Dispose old geometries:
+          walls.forEach(wall => {
+            wall.geometry.dispose();
+          });
+          walls[0].geometry = new THREE.PlaneGeometry(wallDepth, wallHeight);
+          walls[1].geometry = new THREE.PlaneGeometry(wallDepth, wallHeight);
+          walls[2].geometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
+          walls[3].geometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
+          
+          walls[0].position.set(min.x, centerY, centerZ);
+          walls[1].position.set(max.x, centerY, centerZ);
+          walls[2].position.set(centerX, centerY, min.z);
+          walls[3].position.set(centerX, centerY, max.z);
+        }
+      }
+      
+      // Helper function: update material for a given object based on its semantic label.
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
           let material;
-          // Labels to texture.
+          // These labels will get the wallpaper (but now we use the room shell instead)
           const texturedLabels = ["wall", "door", "wall art", "window", "windows"];
           if (semanticLabel && texturedLabels.includes(semanticLabel.toLowerCase())) {
             material = new THREE.MeshBasicMaterial({
@@ -125,7 +207,7 @@
         }
       }
       
-      // Update plane materials when added or updated.
+      // For RATK-detected planes, use our update function.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh) {
@@ -140,16 +222,17 @@
         }
       };
       
-      // For meshes detected by RATK, update material if needed.
+      // For RATK-detected meshes, update materials and compute room boundary.
       ratk.onMeshAdded = (rmesh) => {
         console.log("New mesh detected:", rmesh);
         if (rmesh.meshMesh) {
           updateObjectMaterial(rmesh.meshMesh, rmesh.semanticLabel);
         }
-        computeRoomBoundary();
+        const roomBox = computeRoomBoundary();
+        updateRoomShell(roomBox);
       };
       
-      // Log room dimensions.
+      // Compute overall room boundary from detected meshes.
       function computeRoomBoundary() {
         const overallBox = new THREE.Box3();
         ratk.meshes.forEach(rmesh => {
