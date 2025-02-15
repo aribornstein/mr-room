@@ -44,14 +44,18 @@
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
 
-      // Use three.js's ARButton to create an AR session start button with required features.
+      // Use three.js's ARButton without requesting "dom-overlay".
       document.body.appendChild(
         ARButton.createButton(renderer, {
-          requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
+          sessionInit: {
+            requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
+          },
+          // Prevent any dom-overlay features from being requested.
+          optionalFeatures: []
         })
       );
 
-      // Create a scene and camera
+      // Create scene and camera
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(
         70, window.innerWidth / window.innerHeight, 0.1, 1000
@@ -63,14 +67,14 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
 
-      // Preload a wallpaper texture (change URL as desired)
+      // Preload a wallpaper texture (you can change this URL)
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
 
-      // When a new plane is detected, overlay it with a wallpaper material.
+      // When a new plane is detected, overlay it with the wallpaper texture.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh && plane.planeMesh.geometry) {
@@ -85,7 +89,7 @@
         }
       };
 
-      // Utility: Compute the overall room boundary from detected meshes and log its dimensions.
+      // Utility: Compute overall room boundary from detected meshes and log dimensions.
       function computeRoomBoundary() {
         const overallBox = new THREE.Box3();
         ratk.meshes.forEach(rmesh => {
