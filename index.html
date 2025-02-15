@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebXR Room Prototype – Place Box Within Room</title>
+    <title>WebXR Room Prototype – Place Box & Border</title>
     <style>
       body { margin: 0; overflow: hidden; }
       canvas { display: block; }
@@ -82,8 +82,9 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
 
-      // Global variable to store the room boundary (as a THREE.Box3)
+      // Global variables to store the room boundary and its border helper
       let roomBoundary = null;
+      let roomBorderHelper = null;
 
       // Utility: Compute overall room boundary from detected meshes
       function computeRoomBoundary() {
@@ -101,6 +102,13 @@
         console.log(
           `Room dimensions (m): width: ${size.x.toFixed(2)}, height: ${size.y.toFixed(2)}, depth: ${size.z.toFixed(2)}`
         );
+        // Update the visual border helper
+        if (roomBorderHelper) {
+          scene.remove(roomBorderHelper);
+        }
+        // Create a new Box3Helper to show a border (yellow color)
+        roomBorderHelper = new THREE.Box3Helper(overallBox, 0xffff00);
+        scene.add(roomBorderHelper);
         return overallBox;
       }
 
