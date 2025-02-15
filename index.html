@@ -29,6 +29,14 @@
         margin-right: 5px;
       }
     </style>
+    <!-- Import map to resolve "three" module for RATK -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.153.0/build/three.module.js"
+        }
+      }
+    </script>
   </head>
   <body>
     <!-- AR session start button -->
@@ -51,11 +59,11 @@
       <button id="placeBox">Place Box</button>
     </div>
 
-    <!-- Load three.js and RATK via unpkg -->
+    <!-- Load RATK via unpkg -->
     <script type="module">
+      // Import three and RATK; thanks to our import map, "three" now resolves correctly.
       import * as THREE from 'https://unpkg.com/three@0.153.0/build/three.module.js';
       import { ARButton, RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
-
 
       // Create renderer with WebXR enabled
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -107,7 +115,6 @@
         if (roomBorderHelper) {
           scene.remove(roomBorderHelper);
         }
-        // Create a new Box3Helper to show a border (yellow color)
         roomBorderHelper = new THREE.Box3Helper(overallBox, 0xffff00);
         scene.add(roomBorderHelper);
         return overallBox;
@@ -122,52 +129,24 @@
       // Allow user to place a box at specified coordinates,
       // but only if the point is within the computed room boundary.
       document.getElementById('placeBox').addEventListener('click', () => {
-        // Get coordinate values (in meters)
         const x = parseFloat(document.getElementById('xCoord').value) || 0;
         const y = parseFloat(document.getElementById('yCoord').value) || 0;
         const z = parseFloat(document.getElementById('zCoord').value) || 0;
         const point = new THREE.Vector3(x, y, z);
 
-        // If we have computed a room boundary, check if the point is inside
         if (roomBoundary) {
           if (!roomBoundary.containsPoint(point)) {
             alert("Cannot place box: the specified coordinates are outside the room boundary.");
             return;
           }
         } else {
-          // If no boundary is available yet, warn the user.
           alert("Room boundary not determined yet. Please try again in a moment.");
           return;
         }
 
-        // Create a simple box mesh
         const boxSize = 0.3; // 30cm cube
         const boxGeometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
         const boxMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
         const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
         boxMesh.position.set(x, y, z);
-        scene.add(boxMesh);
-        console.log(`Placed box at (${x}, ${y}, ${z})`);
-      });
-
-      // Animation loop: update RATK and render the scene
-      function animate() {
-        renderer.setAnimationLoop(render);
-        ratk.update();
-      }
-
-      function render() {
-        renderer.render(scene, camera);
-      }
-
-      animate();
-
-      // Handle window resize events
-      window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      });
-    </script>
-  </body>
-</html>
+       
