@@ -10,7 +10,7 @@
         position: absolute;
         top: 10px;
         left: 10px;
-        background: rgba(255,255,255,0.8);
+        background: rgba(255, 255, 255, 0.8);
         padding: 10px;
         font-family: sans-serif;
         z-index: 100;
@@ -42,60 +42,61 @@
     <!-- Custom AR start button -->
     <button id="ar-button">Enter AR</button>
     
-    <!-- Load modules -->
     <script type="module">
       import * as THREE from 'https://unpkg.com/three@0.153.0/build/three.module.js';
       import { RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
-
-      // Check if WebXR is available
+      
+      // Check for WebXR support
       if (!navigator.xr) {
         console.error("WebXR not available on this device/browser.");
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
-
-      // Create renderer with WebXR enabled
+      
+      // Create the renderer and enable WebXR
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
-
-      // Custom AR button handler (bypassing ARButton to avoid dom-overlay)
+      
+      // Custom AR button handler (bypassing ARButton to avoid dom-overlay issues)
       const arButton = document.getElementById('ar-button');
       arButton.addEventListener('click', () => {
         console.log("AR button clicked.");
         const sessionInit = {
           requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
-          // No optionalFeatures are requested.
+          // Do not request any optionalFeatures like "dom-overlay"
         };
         navigator.xr.requestSession('immersive-ar', sessionInit)
           .then(session => {
             console.log("AR session started.");
+            // Set the reference space type to 'local' for compatibility with mesh detection
+            renderer.xr.setReferenceSpaceType('local');
             renderer.xr.setSession(session);
           })
           .catch(err => {
             console.error("Failed to start AR session", err);
           });
       });
-
+      
       // Create scene and camera
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(
         70, window.innerWidth / window.innerHeight, 0.1, 1000
       );
-      camera.position.set(0, 1.6, 0);
+      camera.position.set(0, 1.6, 0); // Typical eye level
       scene.add(camera);
-
-      // Initialize RATK and add its root to the scene
+      
+      // Initialize RATK (Reality Accelerator Toolkit) and add its root to the scene
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
-
-      // Preload a wallpaper texture (adjust URL if needed)
+      
+      // Preload a wallpaper texture (change the URL if needed)
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
-
+      
       // When a new plane is detected, overlay it with the wallpaper texture.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
@@ -110,7 +111,7 @@
           plane.planeMesh.needsUpdate = true;
         }
       };
-
+      
       // Utility: Compute overall room boundary from detected meshes and log dimensions.
       function computeRoomBoundary() {
         const overallBox = new THREE.Box3();
@@ -128,25 +129,21 @@
         );
         return overallBox;
       }
-
+      
       // When a new mesh is detected, compute and log room dimensions.
       ratk.onMeshAdded = (rmesh) => {
         console.log("New mesh detected:", rmesh);
         computeRoomBoundary();
       };
-
-      // Animation loop: update RATK and render the scene.
-      function animate() {
-        renderer.setAnimationLoop(render);
-        ratk.update();
-      }
-
+      
+      // Animation loop: update RATK and render the scene on each frame.
       function render() {
+        ratk.update();
         renderer.render(scene, camera);
       }
-      animate();
-
-      // Handle window resize
+      renderer.setAnimationLoop(render);
+      
+      // Handle window resize events
       window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
