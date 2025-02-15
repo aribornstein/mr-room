@@ -140,7 +140,7 @@
       // Walls are positioned exactly at the room boundaries (with a small inset) so that they occlude the wall surfaces.
       function updateRoomShell(box) {
         // We'll inset the walls slightly (0.01 m) so they fully cover the actual walls.
-        const inset = 0.001;
+        const inset = 0.005;
         const min = box.min;
         const max = box.max;
         const centerX = (min.x + max.x) / 2;
