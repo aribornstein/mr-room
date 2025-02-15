@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- IMPORTANT: The origin-trial meta tag is required for passthrough on Quest 3 -->
+    <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Virtual Wallpaper & Room Dimensions Prototype</title>
     <style>
       body { margin: 0; overflow: hidden; background: none; }
@@ -10,7 +13,6 @@
         position: absolute;
         top: 10px;
         left: 10px;
-        background: rgba(255, 255, 255, 0.8);
         padding: 10px;
         font-family: sans-serif;
         z-index: 100;
@@ -49,11 +51,11 @@
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
       
-      // Create the renderer with alpha enabled and a fully transparent clear color.
+      // Create renderer with alpha enabled and a transparent clear color.
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      renderer.setClearColor(0x000000, 0); // transparent background
+      renderer.setClearColor(0x000000, 0); // fully transparent
       document.body.appendChild(renderer.domElement);
       
       const arButton = document.getElementById('ar-button');
@@ -82,14 +84,14 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Load the wallpaper texture.
+      // Load the wallpaper texture for walls.
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Custom shader for non-wall planes that outputs full transparency.
+      // Custom passthrough material that discards every fragment.
       const passthroughMaterial = new THREE.ShaderMaterial({
         vertexShader: `
           void main() {
@@ -98,30 +100,29 @@
         `,
         fragmentShader: `
           void main() {
-            gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+            discard;
           }
         `,
         transparent: true,
-        blending: THREE.NoBlending,
         depthWrite: false,
         depthTest: false,
+        blending: THREE.NoBlending,
       });
       
-      // When a new plane is detected, decide how to render it.
+      // When a new plane is detected, assign wallpaper to walls; all others get the passthrough material.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh && plane.planeMesh.geometry) {
           let material;
-          // For walls, use the wallpaper texture.
           if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
             material = new THREE.MeshBasicMaterial({
               map: wallpaperTexture,
               side: THREE.DoubleSide,
               transparent: true,
-              opacity: 0.9
+              opacity: 0.9,
             });
           } else {
-            // For non-wall surfaces, assign our passthrough material.
+            // Use the passthrough material for all non-wall planes.
             material = passthroughMaterial;
           }
           plane.planeMesh.material = material;
