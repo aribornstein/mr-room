@@ -94,18 +94,20 @@
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh && plane.planeMesh.geometry) {
-          let material;
-          // For walls, use your wallpaper.
-          if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
-            material = new THREE.MeshBasicMaterial({
-              map: wallpaperTexture,
-              side: THREE.DoubleSide,
-              transparent: true,
-              opacity: 0.9
-            });
-          } else {
-            // For non-wall surfaces to render any material
-            console.log("Non-wall plane detected:", plane.name, plane.semanticLabel);
+            let material;
+            // For walls, use your wallpaper.
+            if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
+                material = new THREE.MeshBasicMaterial({
+                    map: wallpaperTexture,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                plane.planeMesh.material = material;
+                plane.planeMesh.needsUpdate = true;  
+            } else{
+                console.log("Plane is not a wall.", plane.semanticLabel || "");
+            }
         }
       };
       
