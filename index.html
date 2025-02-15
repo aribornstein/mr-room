@@ -115,6 +115,7 @@
             // Optionally set renderOrder if needed:
             object.renderOrder = 0;
           } else {
+            console.log("Non-wall object detected:", semanticLabel.toLowerCase()||"unknown");
             // Otherwise, assign our passthrough material.
             material = passthroughMaterial;
             object.renderOrder = -100;
