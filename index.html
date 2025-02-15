@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- IMPORTANT: The origin-trial meta tag is required for passthrough on Quest 3 -->
+    <!-- Origin trial meta tag required for Quest 3 passthrough -->
     <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Virtual Wallpaper & Room Dimensions Prototype</title>
@@ -13,6 +13,7 @@
         position: absolute;
         top: 10px;
         left: 10px;
+        background: rgba(255,255,255,0.8);
         padding: 10px;
         font-family: sans-serif;
         z-index: 100;
@@ -51,7 +52,7 @@
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
       
-      // Create renderer with alpha enabled and a transparent clear color.
+      // Create the renderer with alpha enabled and a fully transparent clear color.
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
@@ -84,7 +85,7 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Load the wallpaper texture for walls.
+      // Load the wallpaper texture for wall surfaces.
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
@@ -109,9 +110,8 @@
         blending: THREE.NoBlending,
       });
       
-      // When a new plane is detected, assign wallpaper to walls; all others get the passthrough material.
-      ratk.onPlaneAdded = (plane) => {
-        console.log("New plane detected:", plane);
+      // Helper: update plane material based on semantic label.
+      function updatePlaneMaterial(plane) {
         if (plane.planeMesh && plane.planeMesh.geometry) {
           let material;
           if (plane.semanticLabel && plane.semanticLabel.toLowerCase() === "wall") {
@@ -122,12 +122,23 @@
               opacity: 0.9,
             });
           } else {
-            // Use the passthrough material for all non-wall planes.
+            // For non-wall planes, force the passthrough material.
             material = passthroughMaterial;
           }
           plane.planeMesh.material = material;
           plane.planeMesh.needsUpdate = true;
         }
+      }
+      
+      // Set both onPlaneAdded and onPlaneUpdated.
+      ratk.onPlaneAdded = (plane) => {
+        console.log("New plane detected:", plane);
+        updatePlaneMaterial(plane);
+      };
+      
+      ratk.onPlaneUpdated = (plane) => {
+        console.log("Plane updated:", plane);
+        updatePlaneMaterial(plane);
       };
       
       // Log room dimensions when a new mesh is detected.
