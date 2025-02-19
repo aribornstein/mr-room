@@ -5,7 +5,7 @@
     <!-- Origin trial meta tag required for Quest 3 passthrough -->
     <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AR Occlusion via Mesh Detection (Quest 3)</title>
+    <title>AR Occlusion via Mesh Detection (Quest 3) with Colored Windows and Doors</title>
     <style>
       body { margin: 0; overflow: hidden; background: none; }
       canvas { display: block; background: none; }
@@ -33,7 +33,6 @@
       import * as THREE from 'https://unpkg.com/three@0.153.0/build/three.module.js';
       import { RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
 
-      // Ensure WebXR is available.
       if (!navigator.xr) {
         console.error("WebXR is not available on this device/browser.");
       }
@@ -44,11 +43,11 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
       
-      // Create a session configuration that uses only supported features.
+      // Session creation with essential features plus optional mesh detection.
       async function startARSession() {
         const config = {
           requiredFeatures: ['hit-test', 'plane-detection', 'anchors'],
-          optionalFeatures: ['mesh-detection'] // Mesh detection is available on Quest 3.
+          optionalFeatures: ['mesh-detection']
         };
         try {
           const session = await navigator.xr.requestSession('immersive-ar', config);
@@ -60,7 +59,6 @@
         }
       }
 
-      // Start AR when the button is pressed.
       document.getElementById('ar-button').addEventListener('click', async () => {
         try {
           const session = await startARSession();
@@ -71,27 +69,28 @@
         }
       });
       
-      // Set up the scene and camera.
+      // Set up scene and camera.
       const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 1.6, 0); // Typical eye level.
+      const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 1.6, 0);
       scene.add(camera);
       
       // Initialize RATK for plane and mesh detection.
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Load a texture for the wallpaper.
+      // Texture loader for wallpaper (optional—if you want to use a texture instead of a solid color).
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Create a material for the wallpaper.
-      function createMaterial(texture) {
+      // Create a material for walls with wallpaper.
+      function createMaterial(options) {
         const material = new THREE.MeshBasicMaterial({
-          map: texture,
+          color: options.color || 0xffffff,
+          map: options.map || null,
           side: THREE.DoubleSide,
           transparent: true,
           opacity: 0.9,
@@ -103,35 +102,42 @@
         material.polygonOffsetUnits = 1;
         return material;
       }
-      const wallpaperMaterial = createMaterial(wallpaperTexture);
       
-      // Create an occlusion material that writes only to depth (no color).
+      // Materials for different surfaces.
+      const wallpaperMaterial = createMaterial({ map: wallpaperTexture });
+      const doorMaterial      = createMaterial({ color: 0x8B4513 });   // Brownish door.
+      const windowMaterial    = createMaterial({ color: 0x87CEEB });   // Light blue for windows.
+      
+      // Occlusion material for non-wall surfaces (furniture, etc.) that should block virtual content.
       const occlusionMaterial = new THREE.MeshBasicMaterial({
         colorWrite: false,
         depthWrite: true,
         depthTest: true,
       });
       
-      // Update object materials based on their semantic label.
-      // Here, we assume that surfaces labeled as "wall" or "wall art" should display wallpaper,
-      // while all other surfaces act as occluders.
+      // Update material assignment based on semantic labels.
+      // Surfaces labeled "wall" or "wall art" get the wallpaper material.
+      // "door" and "window" surfaces get their respective materials.
+      // All others use the occlusion material.
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
           const label = semanticLabel ? semanticLabel.toLowerCase() : "";
-          if (label.includes("wall") || label.includes("wall art")) {
-            // Apply the wallpaper material.
-            object.material = wallpaperMaterial;
-            object.renderOrder = 0;
-          } else {
-            // For non-wall surfaces (like tables or other furniture), use the occlusion material.
-            object.material = occlusionMaterial;
-            object.renderOrder = -200;
+          let desiredMaterial = occlusionMaterial;
+          if (label.includes("door")) {
+            desiredMaterial = doorMaterial;
+          } else if (label.includes("window")) {
+            desiredMaterial = windowMaterial;
+          } else if (label.includes("wall") || label.includes("wall art")) {
+            desiredMaterial = wallpaperMaterial;
           }
+          object.material = desiredMaterial;
+          // Set render order: occluders are rendered first.
+          object.renderOrder = (desiredMaterial === occlusionMaterial) ? -200 : 0;
           object.needsUpdate = true;
         }
       }
       
-      // When a plane is added/updated via RATK, update its material.
+      // Update materials on detected planes and meshes.
       ratk.onPlaneAdded = (plane) => {
         if (plane.planeMesh) {
           updateObjectMaterial(plane.planeMesh, plane.semanticLabel);
@@ -142,7 +148,6 @@
           updateObjectMaterial(plane.planeMesh, plane.semanticLabel);
         }
       };
-      // When a mesh is detected, update its material accordingly.
       ratk.onMeshAdded = (rmesh) => {
         if (rmesh.meshMesh) {
           updateObjectMaterial(rmesh.meshMesh, rmesh.semanticLabel);
