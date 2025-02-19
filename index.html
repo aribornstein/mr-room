@@ -62,25 +62,21 @@
       // XRWebGLBinding will be created after the session starts.
       let xrGlBinding = null;
 
-      // Fallback session creation: first try advanced config, then fallback.
+      // Fallback session creation: try advanced config (with depth sensing), then fallback.
       async function startARSession() {
-        // Base configuration with required features.
         const baseConfig = {
           requiredFeatures: ['hit-test', 'plane-detection', 'anchors'],
-          // Mark advanced features as optional.
           optionalFeatures: ['mesh-detection', 'depth-sensing']
         };
-        // Advanced configuration: includes depth sensing preferences.
         const advancedConfig = {
           ...baseConfig,
           depthSensing: {
-            usagePreference: ["cpu-optimized", "gpu-optimized"],
-            dataFormatPreference: ["luminance-alpha", "float32"]
+            usagePreference: ["gpu-optimized"], // Try "cpu-optimized" if needed.
+            dataFormatPreference: ["luminance-alpha"]
           }
         };
 
         try {
-          // Attempt with advanced config.
           const session = await navigator.xr.requestSession('immersive-ar', advancedConfig);
           console.log("AR session started with advanced configuration.");
           return session;
@@ -98,20 +94,23 @@
       }
 
       // AR button event: start session and create XRWebGLBinding.
-      document.getElementById('ar-button').addEventListener('click', () => {
-        startARSession().then(session => {
+      document.getElementById('ar-button').addEventListener('click', async () => {
+        try {
+          const session = await startARSession();
           renderer.xr.setReferenceSpaceType('local');
           renderer.xr.setSession(session);
-          // Create XRWebGLBinding to access depth textures if available.
+
+          // Get the WebGL context and mark it as XR compatible.
           const gl = renderer.getContext();
+          await gl.makeXRCompatible();
           try {
             xrGlBinding = new XRWebGLBinding(session, gl);
           } catch (error) {
             console.warn("XRWebGLBinding not available:", error);
           }
-        }).catch(err => {
+        } catch (err) {
           console.error("Could not create an AR session.", err);
-        });
+        }
       });
       
       // Set up scene, camera, and RATK.
@@ -129,11 +128,11 @@
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
-      const doorTexture = textureLoader.load('https://p7.hiclipart.com/preview/79/433/316/window-door-door.jpg', () => {
+      const doorTexture = textureLoader.load('https://threejs.org/examples/textures/door.jpg', () => {
         doorTexture.wrapS = THREE.RepeatWrapping;
         doorTexture.wrapT = THREE.RepeatWrapping;
       });
-      const windowTexture = textureLoader.load('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSqEeF-9BcIAWiKTuiaDiwp0_ofJDfg6XkJww&s', () => {
+      const windowTexture = textureLoader.load('https://threejs.org/examples/textures/uv_grid_opengl.jpg', () => {
         windowTexture.wrapS = THREE.RepeatWrapping;
         windowTexture.wrapT = THREE.RepeatWrapping;
       });
@@ -227,7 +226,7 @@
       }
       
       // --- Occlusion Pass using Depth-Sensing ---
-      // We create a full-screen quad that uses the depth texture (if available)
+      // Create a full-screen quad that uses the depth texture (if available)
       // to write to the depth buffer without drawing color.
       const occlusionGeometry = new THREE.PlaneGeometry(2, 2);
       const occlusionMaterial = new THREE.ShaderMaterial({
@@ -267,11 +266,16 @@
           const viewerPose = frame.getViewerPose(referenceSpace);
           if (viewerPose) {
             const view = viewerPose.views[0];
-            const depthInfo = xrGlBinding.getDepthInformation(view);
-            if (depthInfo) {
-              occlusionMaterial.uniforms.u_DepthTexture.value = depthInfo.texture;
-              occlusionMaterial.uniforms.u_UVTransform.value.fromArray(depthInfo.normDepthBufferFromNormView.matrix);
-              occlusionMaterial.uniforms.u_RawValueToMeters.value = depthInfo.rawValueToMeters;
+            try {
+              const depthInfo = xrGlBinding.getDepthInformation(view);
+              if (depthInfo) {
+                occlusionMaterial.uniforms.u_DepthTexture.value = depthInfo.texture;
+                occlusionMaterial.uniforms.u_UVTransform.value.fromArray(depthInfo.normDepthBufferFromNormView.matrix);
+                occlusionMaterial.uniforms.u_RawValueToMeters.value = depthInfo.rawValueToMeters;
+              }
+            } catch (error) {
+              // Depth sensing might not be supported on this session.
+              console.warn("Depth sensing not supported in this frame:", error);
             }
           }
         }
