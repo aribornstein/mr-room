@@ -5,7 +5,7 @@
     <!-- Origin trial meta tag required for Quest 3 passthrough -->
     <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AR with Depth-Sensing Occlusion Fallback</title>
+    <title>AR without Depth Sensing (Quest 3)</title>
     <style>
       body { margin: 0; overflow: hidden; background: none; }
       canvas { display: block; background: none; }
@@ -59,55 +59,29 @@
       renderer.setClearColor(0x000000, 0); // fully transparent
       document.body.appendChild(renderer.domElement);
       
-      // XRWebGLBinding will be created after the session starts.
-      let xrGlBinding = null;
-
-      // Fallback session creation: try advanced config (with depth sensing), then fallback.
+      // Session creation without depth sensing.
       async function startARSession() {
-        const baseConfig = {
+        const config = {
           requiredFeatures: ['hit-test', 'plane-detection', 'anchors'],
-          optionalFeatures: ['mesh-detection', 'depth-sensing']
-        };
-        const advancedConfig = {
-          ...baseConfig,
-          depthSensing: {
-            usagePreference: ["gpu-optimized"], // Try "cpu-optimized" if needed.
-            dataFormatPreference: ["luminance-alpha"]
-          }
+          optionalFeatures: ['mesh-detection']
         };
 
         try {
-          const session = await navigator.xr.requestSession('immersive-ar', advancedConfig);
-          console.log("AR session started with advanced configuration.");
+          const session = await navigator.xr.requestSession('immersive-ar', config);
+          console.log("AR session started with configuration:", config);
           return session;
         } catch (err) {
-          console.warn("Advanced configuration failed, falling back.", err);
-          try {
-            const session = await navigator.xr.requestSession('immersive-ar', baseConfig);
-            console.log("AR session started with base configuration.");
-            return session;
-          } catch (baseErr) {
-            console.error("Failed to start AR session with base configuration.", baseErr);
-            throw baseErr;
-          }
+          console.error("Failed to start AR session.", err);
+          throw err;
         }
       }
 
-      // AR button event: start session and create XRWebGLBinding.
+      // AR button event: start session.
       document.getElementById('ar-button').addEventListener('click', async () => {
         try {
           const session = await startARSession();
           renderer.xr.setReferenceSpaceType('local');
           renderer.xr.setSession(session);
-
-          // Get the WebGL context and mark it as XR compatible.
-          const gl = renderer.getContext();
-          await gl.makeXRCompatible();
-          try {
-            xrGlBinding = new XRWebGLBinding(session, gl);
-          } catch (error) {
-            console.warn("XRWebGLBinding not available:", error);
-          }
         } catch (err) {
           console.error("Could not create an AR session.", err);
         }
@@ -148,7 +122,7 @@
           transparent: true,
           opacity: 0.9,
           depthTest: true,
-          depthWrite: false, // rely on occlusion pass for depth.
+          depthWrite: false,
         });
         material.polygonOffset = true;
         material.polygonOffsetFactor = 1;
@@ -225,60 +199,8 @@
         return overallBox;
       }
       
-      // --- Occlusion Pass using Depth-Sensing ---
-      // Create a full-screen quad that uses the depth texture (if available)
-      // to write to the depth buffer without drawing color.
-      const occlusionGeometry = new THREE.PlaneGeometry(2, 2);
-      const occlusionMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-          u_DepthTexture: { value: null },
-          u_UVTransform: { value: new THREE.Matrix4() },
-          u_RawValueToMeters: { value: 1.0 }
-        },
-        vertexShader: `
-          void main() {
-            gl_Position = vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          precision mediump float;
-          uniform sampler2D u_DepthTexture;
-          uniform mat4 u_UVTransform;
-          uniform float u_RawValueToMeters;
-          void main() {
-            // Discard output; depth texture is used for occlusion only.
-            discard;
-          }
-        `,
-        depthWrite: true,
-        depthTest: true,
-        colorWrite: false
-      });
-      const occlusionMesh = new THREE.Mesh(occlusionGeometry, occlusionMaterial);
-      occlusionMesh.renderOrder = -200; // Render first.
-      scene.add(occlusionMesh);
-      
       // Render loop.
       function render(timestamp, frame) {
-        // Update occlusion mesh uniforms if depth-sensing is available.
-        if (frame && xrGlBinding) {
-          const referenceSpace = renderer.xr.getReferenceSpace();
-          const viewerPose = frame.getViewerPose(referenceSpace);
-          if (viewerPose) {
-            const view = viewerPose.views[0];
-            try {
-              const depthInfo = xrGlBinding.getDepthInformation(view);
-              if (depthInfo) {
-                occlusionMaterial.uniforms.u_DepthTexture.value = depthInfo.texture;
-                occlusionMaterial.uniforms.u_UVTransform.value.fromArray(depthInfo.normDepthBufferFromNormView.matrix);
-                occlusionMaterial.uniforms.u_RawValueToMeters.value = depthInfo.rawValueToMeters;
-              }
-            } catch (error) {
-              // Depth sensing might not be supported on this session.
-              console.warn("Depth sensing not supported in this frame:", error);
-            }
-          }
-        }
         ratk.update();
         renderer.render(scene, camera);
       }
