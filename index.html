@@ -88,23 +88,30 @@
       // Load the wallpaper texture.
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
-        // Once loaded, set repeat wrapping.
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
       // Create reusable materials.
+      // The wallpaper material now uses polygon offset and disables depth writes to reduce flickering.
       const wallpaperMaterial = new THREE.MeshBasicMaterial({
         map: wallpaperTexture,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.9
+        opacity: 0.9,
+        depthTest: true,
+        depthWrite: false, // Prevent depth buffer conflicts
       });
+      wallpaperMaterial.polygonOffset = true;
+      wallpaperMaterial.polygonOffsetFactor = 1;
+      wallpaperMaterial.polygonOffsetUnits = 1;
       
       const passthroughMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
       });
       passthroughMaterial.colorWrite = false;
       
