@@ -5,7 +5,7 @@
     <!-- Origin trial meta tag required for Quest 3 passthrough -->
     <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AR Wallpaper with Semantic Materials (No Occlusion)</title>
+    <title>AR Wallpaper with Semantic Materials & Occlusion</title>
     <style>
       body { margin: 0; overflow: hidden; background: none; }
       canvas { display: block; background: none; }
@@ -43,7 +43,7 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
       
-      // Session creation with essential features plus optional mesh detection.
+      // Updated session creation that sets up both a base layer and an occlusion layer.
       async function startARSession() {
         const config = {
           requiredFeatures: ['hit-test', 'plane-detection', 'anchors'],
@@ -52,6 +52,39 @@
         try {
           const session = await navigator.xr.requestSession('immersive-ar', config);
           console.log("AR session started with configuration:", config);
+          
+          // Create a base layer (the default WebGL layer).
+          const gl = renderer.getContext();
+          const baseLayer = new XRWebGLLayer(session, gl, { alpha: true });
+          
+          // Prepare to update the render state.
+          const renderStateUpdate = { baseLayer };
+          
+          // If supported, create an occlusion layer.
+          // Note: XRQuadLayer is part of the WebXR Layers API. Ensure the environment
+          // supports it (and that you have the appropriate origin trial or flag enabled).
+          if (window.XRQuadLayer) {
+            // Request a reference space for the occlusion layer.
+            const refSpace = await session.requestReferenceSpace('local');
+            // Define the size of your occlusion quad.
+            const occlusionWidth = 2.0;  // Adjust to cover the desired area.
+            const occlusionHeight = 2.0;
+            // Create the XRQuadLayer.
+            // (The constructor parameters may vary as the API evolves.)
+            const occlusionLayer = new XRQuadLayer(session, {
+              space: refSpace,
+              width: occlusionWidth,
+              height: occlusionHeight
+            });
+            // Configure the layer's transform so it aligns with your real-world surface.
+            // For example, here we position it 1.6 meters up and 2 meters away.
+            occlusionLayer.transform = new XRRigidTransform({ x: 0, y: 1.6, z: -2 });
+            // Add the occlusion layer to the render state.
+            renderStateUpdate.layers = [baseLayer, occlusionLayer];
+          }
+          
+          // Update the session render state.
+          session.updateRenderState(renderStateUpdate);
           return session;
         } catch (err) {
           console.error("Failed to start AR session.", err);
