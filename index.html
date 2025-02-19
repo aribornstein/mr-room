@@ -5,7 +5,7 @@
     <!-- Origin trial meta tag required for Quest 3 passthrough -->
     <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AR Occlusion via Mesh Detection (Quest 3) with Colored Windows and Doors</title>
+    <title>AR Occlusion via Mesh Detection (Quest 3) with Smoothing</title>
     <style>
       body { margin: 0; overflow: hidden; background: none; }
       canvas { display: block; background: none; }
@@ -79,14 +79,14 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Texture loader for wallpaper (optional—if you want to use a texture instead of a solid color).
+      // Texture loader for wallpaper texture.
       const textureLoader = new THREE.TextureLoader();
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Create a material for walls with wallpaper.
+      // Helper to create materials.
       function createMaterial(options) {
         const material = new THREE.MeshBasicMaterial({
           color: options.color || 0xffffff,
@@ -105,20 +105,23 @@
       
       // Materials for different surfaces.
       const wallpaperMaterial = createMaterial({ map: wallpaperTexture });
-      const doorMaterial      = createMaterial({ color: 0x8B4513 });   // Brownish door.
-      const windowMaterial    = createMaterial({ color: 0x87CEEB });   // Light blue for windows.
+      const doorMaterial      = createMaterial({ color: 0x8B4513 });   // Brown.
+      const windowMaterial    = createMaterial({ color: 0x87CEEB });   // Light blue.
       
-      // Occlusion material for non-wall surfaces (furniture, etc.) that should block virtual content.
+      // Occlusion material for other surfaces.
       const occlusionMaterial = new THREE.MeshBasicMaterial({
         colorWrite: false,
         depthWrite: true,
         depthTest: true,
       });
       
+      // For smoothing wall detection, we store stable parameters.
+      let stableWallParams = null;
+      const smoothingFactor = 0.1; // Adjust between 0 (no update) and 1 (immediate update).
+      const positionThreshold = 0.05; // Only update if the wall moves more than 5cm.
+
       // Update material assignment based on semantic labels.
-      // Surfaces labeled "wall" or "wall art" get the wallpaper material.
-      // "door" and "window" surfaces get their respective materials.
-      // All others use the occlusion material.
+      // For walls, we apply smoothing to position/rotation.
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
           const label = semanticLabel ? semanticLabel.toLowerCase() : "";
@@ -129,9 +132,32 @@
             desiredMaterial = windowMaterial;
           } else if (label.includes("wall") || label.includes("wall art")) {
             desiredMaterial = wallpaperMaterial;
+            // Apply smoothing for wall geometry.
+            let currentPos = new THREE.Vector3();
+            object.getWorldPosition(currentPos);
+            let currentQuat = new THREE.Quaternion();
+            object.getWorldQuaternion(currentQuat);
+            
+            // If no stable params yet, initialize.
+            if (!stableWallParams) {
+              stableWallParams = {
+                position: currentPos.clone(),
+                quaternion: currentQuat.clone()
+              };
+            } else {
+              // Compute the difference.
+              const delta = currentPos.distanceTo(stableWallParams.position);
+              if (delta > positionThreshold) {
+                stableWallParams.position.lerp(currentPos, smoothingFactor);
+                stableWallParams.quaternion.slerp(currentQuat, smoothingFactor);
+              }
+              // Apply the stable parameters to the object.
+              object.position.copy(stableWallParams.position);
+              object.quaternion.copy(stableWallParams.quaternion);
+            }
           }
           object.material = desiredMaterial;
-          // Set render order: occluders are rendered first.
+          // Ensure occlusion objects render first.
           object.renderOrder = (desiredMaterial === occlusionMaterial) ? -200 : 0;
           object.needsUpdate = true;
         }
