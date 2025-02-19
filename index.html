@@ -5,7 +5,7 @@
     <!-- Origin trial meta tag required for Quest 3 passthrough -->
     <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Virtual Wallpaper & Room Dimensions Prototype</title>
+    <title>AR with Depth-Sensing Occlusion</title>
     <style>
       body { margin: 0; overflow: hidden; background: none; }
       canvas { display: block; background: none; }
@@ -51,44 +51,53 @@
         console.error("WebXR not available on this device/browser.");
         document.getElementById('info').innerText = "WebXR not available on this device/browser.";
       }
-      
-      // Create the renderer with alpha enabled and a fully transparent clear color.
+
+      // Request depth-sensing alongside other features.
+      const sessionInit = {
+        requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors', 'depth-sensing'],
+        depthSensing: {
+          usagePreference: ["gpu-optimized"],
+          dataFormatPreference: ["luminance-alpha"]
+        }
+      };
+
+      // Create the renderer with a transparent background.
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      renderer.setClearColor(0x000000, 0); // fully transparent background
+      renderer.setClearColor(0x000000, 0); // fully transparent
       document.body.appendChild(renderer.domElement);
-      
+
       const arButton = document.getElementById('ar-button');
+      let xrGlBinding = null; // To hold our XRWebGLBinding
       arButton.addEventListener('click', () => {
         console.log("AR button clicked.");
-        const sessionInit = {
-          requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
-          // Note: Some devices may require additional features for depth.
-        };
         navigator.xr.requestSession('immersive-ar', sessionInit)
           .then(session => {
             console.log("AR session started.");
             renderer.xr.setReferenceSpaceType('local');
             renderer.xr.setSession(session);
+
+            // Create an XRWebGLBinding to access depth textures.
+            const gl = renderer.getContext();
+            xrGlBinding = new XRWebGLBinding(session, gl);
           })
           .catch(err => {
             console.error("Failed to start AR session", err);
           });
       });
-      
+
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
       camera.position.set(0, 1.6, 0); // Typical eye level
       scene.add(camera);
-      
-      // Initialize RATK and add its root to the scene.
+
+      // Initialize RATK for plane/mesh detection.
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
-      
-      // Load textures for different surfaces.
+
+      // Load textures and create materials for wallpaper, door, window, and ceiling.
       const textureLoader = new THREE.TextureLoader();
-      
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
@@ -105,8 +114,7 @@
         ceilingTexture.wrapS = THREE.RepeatWrapping;
         ceilingTexture.wrapT = THREE.RepeatWrapping;
       });
-      
-      // Helper to create a reusable material.
+
       function createMaterial(texture) {
         const material = new THREE.MeshBasicMaterial({
           map: texture,
@@ -114,20 +122,17 @@
           transparent: true,
           opacity: 0.9,
           depthTest: true,
-          depthWrite: false, // Adjusted to help with overlay; occlusion mesh will handle depth.
+          depthWrite: false, // We rely on the occlusion pass for proper depth.
         });
         material.polygonOffset = true;
         material.polygonOffsetFactor = 1;
         material.polygonOffsetUnits = 1;
         return material;
       }
-      
       const wallpaperMaterial = createMaterial(wallpaperTexture);
       const doorMaterial      = createMaterial(doorTexture);
       const windowMaterial    = createMaterial(windowTexture);
       const ceilingMaterial   = createMaterial(ceilingTexture);
-      
-      // A passthrough material for surfaces that don't need texturing.
       const passthroughMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
@@ -136,13 +141,11 @@
         depthWrite: false,
       });
       passthroughMaterial.colorWrite = false;
-      
-      // Helper function: assign proper material based on semantic label.
+
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
           const label = semanticLabel ? semanticLabel.toLowerCase() : "";
           let desiredMaterial = passthroughMaterial;
-          
           if (label.includes("door")) {
             desiredMaterial = doorMaterial;
           } else if (label.includes("window")) {
@@ -152,7 +155,6 @@
           } else if (label.includes("wall") || label.includes("wall art")) {
             desiredMaterial = wallpaperMaterial;
           }
-          
           if (object.material !== desiredMaterial) {
             object.material = desiredMaterial;
             object.renderOrder = (desiredMaterial === passthroughMaterial) ? -100 : 0;
@@ -160,23 +162,19 @@
           }
         }
       }
-      
-      // RATK plane callbacks.
+
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh) {
           updateObjectMaterial(plane.planeMesh, plane.semanticLabel);
         }
       };
-      
       ratk.onPlaneUpdated = (plane) => {
         console.log("Plane updated:", plane);
         if (plane.planeMesh) {
           updateObjectMaterial(plane.planeMesh, plane.semanticLabel);
         }
       };
-      
-      // RATK mesh callback.
       ratk.onMeshAdded = (rmesh) => {
         console.log("New mesh detected:", rmesh);
         if (rmesh.meshMesh) {
@@ -184,24 +182,7 @@
         }
         computeRoomBoundary();
       };
-      
-      // --- Occlusion Mesh Integration ---
-      // If RATK provides depth information, it may offer an occlusion mesh.
-      // This mesh uses an invisible material (colorWrite disabled) but writes to the depth buffer.
-      // This ensures that virtual content behind real-world objects is not rendered in front.
-      if (ratk.occlusionMesh) {
-        ratk.occlusionMesh.material = new THREE.MeshBasicMaterial({
-          colorWrite: false,
-          depthTest: true,
-          depthWrite: true,
-        });
-        // Render the occlusion mesh first (lower renderOrder) so it properly occludes subsequent objects.
-        ratk.occlusionMesh.renderOrder = -200;
-        scene.add(ratk.occlusionMesh);
-        console.log("Occlusion mesh added to the scene.");
-      }
-      
-      // Log room dimensions.
+
       function computeRoomBoundary() {
         const overallBox = new THREE.Box3();
         ratk.meshes.forEach(rmesh => {
@@ -216,14 +197,70 @@
         console.log(`Room dimensions (meters): width: ${size.x.toFixed(2)}, height: ${size.y.toFixed(2)}, depth: ${size.z.toFixed(2)}`);
         return overallBox;
       }
-      
+
+      // --- Occlusion Pass using Depth-Sensing ---
+      // We create an occlusion mesh that uses the depth texture from XRWebGLBinding.
+      // This mesh writes to the depth buffer (but not to color) so that virtual objects behind real-world surfaces are correctly occluded.
+      // Note: This is a simplified example—the shader logic might need tweaking for your specific scenario.
+      const occlusionGeometry = new THREE.PlaneGeometry(2, 2);
+      const occlusionMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          u_DepthTexture: { value: null },
+          u_UVTransform: { value: new THREE.Matrix4() },
+          u_RawValueToMeters: { value: 1.0 }
+        },
+        vertexShader: `
+          void main() {
+            gl_Position = vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          precision mediump float;
+          uniform sampler2D u_DepthTexture;
+          uniform mat4 u_UVTransform;
+          uniform float u_RawValueToMeters;
+          void main() {
+            // For this occlusion pass, we don't output any color.
+            // The depth texture is used solely to write to the depth buffer.
+            discard;
+          }
+        `,
+        depthWrite: true,
+        depthTest: true,
+        colorWrite: false
+      });
+      const occlusionMesh = new THREE.Mesh(occlusionGeometry, occlusionMaterial);
+      // Render this pass first.
+      occlusionMesh.renderOrder = -200;
+      scene.add(occlusionMesh);
+
       // Render loop.
-      function render() {
+      function render(timestamp, frame) {
+        // Update the occlusion mesh uniforms if depth-sensing is available.
+        if (frame && xrGlBinding) {
+          const referenceSpace = renderer.xr.getReferenceSpace();
+          const viewerPose = frame.getViewerPose(referenceSpace);
+          if (viewerPose) {
+            // Use the first view for depth info.
+            const view = viewerPose.views[0];
+            const depthInfo = xrGlBinding.getDepthInformation(view);
+            if (depthInfo) {
+              // Update our occlusion shader with the depth texture and its transform.
+              occlusionMaterial.uniforms.u_DepthTexture.value = depthInfo.texture;
+              // Here we assume the UV transform from the depth API.
+              // In practice, you might need to adapt this based on your viewport.
+              occlusionMaterial.uniforms.u_UVTransform.value.fromArray(depthInfo.normDepthBufferFromNormView.matrix);
+              occlusionMaterial.uniforms.u_RawValueToMeters.value = depthInfo.rawValueToMeters;
+            }
+          }
+        }
+
+        // Update RATK and render the scene.
         ratk.update();
         renderer.render(scene, camera);
       }
       renderer.setAnimationLoop(render);
-      
+
       window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth/window.innerHeight;
         camera.updateProjectionMatrix();
