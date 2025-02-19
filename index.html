@@ -64,6 +64,7 @@
         console.log("AR button clicked.");
         const sessionInit = {
           requiredFeatures: ['hit-test', 'plane-detection', 'mesh-detection', 'anchors']
+          // Note: Some devices may require additional features for depth.
         };
         navigator.xr.requestSession('immersive-ar', sessionInit)
           .then(session => {
@@ -85,16 +86,13 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Texture Loader
+      // Load textures for different surfaces.
       const textureLoader = new THREE.TextureLoader();
       
-      // Load texture for wallpaper (walls)
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
-      
-      // Load additional textures (replace these URLs with your own textures if needed)
       const doorTexture = textureLoader.load('https://threejs.org/examples/textures/door.jpg', () => {
         doorTexture.wrapS = THREE.RepeatWrapping;
         doorTexture.wrapT = THREE.RepeatWrapping;
@@ -108,7 +106,7 @@
         ceilingTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Create reusable materials.
+      // Helper to create a reusable material.
       function createMaterial(texture) {
         const material = new THREE.MeshBasicMaterial({
           map: texture,
@@ -116,7 +114,7 @@
           transparent: true,
           opacity: 0.9,
           depthTest: true,
-          depthWrite: false, // Prevent depth buffer conflicts
+          depthWrite: false, // Adjusted to help with overlay; occlusion mesh will handle depth.
         });
         material.polygonOffset = true;
         material.polygonOffsetFactor = 1;
@@ -139,14 +137,12 @@
       });
       passthroughMaterial.colorWrite = false;
       
-      // Helper function: assign the proper material based on the semantic label.
+      // Helper function: assign proper material based on semantic label.
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
-          // Normalize the semantic label.
           const label = semanticLabel ? semanticLabel.toLowerCase() : "";
           let desiredMaterial = passthroughMaterial;
           
-          // Choose a texture based on the detected label.
           if (label.includes("door")) {
             desiredMaterial = doorMaterial;
           } else if (label.includes("window")) {
@@ -157,7 +153,6 @@
             desiredMaterial = wallpaperMaterial;
           }
           
-          // Only update if the material is different.
           if (object.material !== desiredMaterial) {
             object.material = desiredMaterial;
             object.renderOrder = (desiredMaterial === passthroughMaterial) ? -100 : 0;
@@ -166,7 +161,7 @@
         }
       }
       
-      // Update plane materials when added or updated.
+      // RATK plane callbacks.
       ratk.onPlaneAdded = (plane) => {
         console.log("New plane detected:", plane);
         if (plane.planeMesh) {
@@ -181,7 +176,7 @@
         }
       };
       
-      // For meshes detected by RATK, update material if needed.
+      // RATK mesh callback.
       ratk.onMeshAdded = (rmesh) => {
         console.log("New mesh detected:", rmesh);
         if (rmesh.meshMesh) {
@@ -189,6 +184,22 @@
         }
         computeRoomBoundary();
       };
+      
+      // --- Occlusion Mesh Integration ---
+      // If RATK provides depth information, it may offer an occlusion mesh.
+      // This mesh uses an invisible material (colorWrite disabled) but writes to the depth buffer.
+      // This ensures that virtual content behind real-world objects is not rendered in front.
+      if (ratk.occlusionMesh) {
+        ratk.occlusionMesh.material = new THREE.MeshBasicMaterial({
+          colorWrite: false,
+          depthTest: true,
+          depthWrite: true,
+        });
+        // Render the occlusion mesh first (lower renderOrder) so it properly occludes subsequent objects.
+        ratk.occlusionMesh.renderOrder = -200;
+        scene.add(ratk.occlusionMesh);
+        console.log("Occlusion mesh added to the scene.");
+      }
       
       // Log room dimensions.
       function computeRoomBoundary() {
