@@ -85,27 +85,51 @@
       const ratk = new RealityAccelerator(renderer.xr);
       scene.add(ratk.root);
       
-      // Load the wallpaper texture.
+      // Texture Loader
       const textureLoader = new THREE.TextureLoader();
+      
+      // Load texture for wallpaper (walls)
       const wallpaperTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg', () => {
         wallpaperTexture.wrapS = THREE.RepeatWrapping;
         wallpaperTexture.wrapT = THREE.RepeatWrapping;
       });
       
-      // Create reusable materials.
-      // The wallpaper material now uses polygon offset and disables depth writes to reduce flickering.
-      const wallpaperMaterial = new THREE.MeshBasicMaterial({
-        map: wallpaperTexture,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.9,
-        depthTest: true,
-        depthWrite: false, // Prevent depth buffer conflicts
+      // Load additional textures (replace these URLs with your own textures if needed)
+      const doorTexture = textureLoader.load('https://threejs.org/examples/textures/door.jpg', () => {
+        doorTexture.wrapS = THREE.RepeatWrapping;
+        doorTexture.wrapT = THREE.RepeatWrapping;
       });
-      wallpaperMaterial.polygonOffset = true;
-      wallpaperMaterial.polygonOffsetFactor = 1;
-      wallpaperMaterial.polygonOffsetUnits = 1;
+      const windowTexture = textureLoader.load('https://threejs.org/examples/textures/uv_grid_opengl.jpg', () => {
+        windowTexture.wrapS = THREE.RepeatWrapping;
+        windowTexture.wrapT = THREE.RepeatWrapping;
+      });
+      const ceilingTexture = textureLoader.load('https://threejs.org/examples/textures/flower-1.jpg', () => {
+        ceilingTexture.wrapS = THREE.RepeatWrapping;
+        ceilingTexture.wrapT = THREE.RepeatWrapping;
+      });
       
+      // Create reusable materials.
+      function createMaterial(texture) {
+        const material = new THREE.MeshBasicMaterial({
+          map: texture,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.9,
+          depthTest: true,
+          depthWrite: false, // Prevent depth buffer conflicts
+        });
+        material.polygonOffset = true;
+        material.polygonOffsetFactor = 1;
+        material.polygonOffsetUnits = 1;
+        return material;
+      }
+      
+      const wallpaperMaterial = createMaterial(wallpaperTexture);
+      const doorMaterial      = createMaterial(doorTexture);
+      const windowMaterial    = createMaterial(windowTexture);
+      const ceilingMaterial   = createMaterial(ceilingTexture);
+      
+      // A passthrough material for surfaces that don't need texturing.
       const passthroughMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
@@ -115,19 +139,28 @@
       });
       passthroughMaterial.colorWrite = false;
       
-      // Helper function: assign wallpaper material if semantic label is one of the allowed types,
-      // otherwise assign passthrough material.
+      // Helper function: assign the proper material based on the semantic label.
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
-          // Labels to texture.
-          const texturedLabels = ["wall", "door", "wall art", "window", "windows"];
+          // Normalize the semantic label.
           const label = semanticLabel ? semanticLabel.toLowerCase() : "";
-          let desiredMaterial = texturedLabels.includes(label) ? wallpaperMaterial : passthroughMaterial;
+          let desiredMaterial = passthroughMaterial;
+          
+          // Choose a texture based on the detected label.
+          if (label.includes("door")) {
+            desiredMaterial = doorMaterial;
+          } else if (label.includes("window")) {
+            desiredMaterial = windowMaterial;
+          } else if (label.includes("ceiling")) {
+            desiredMaterial = ceilingMaterial;
+          } else if (label.includes("wall") || label.includes("wall art")) {
+            desiredMaterial = wallpaperMaterial;
+          }
           
           // Only update if the material is different.
           if (object.material !== desiredMaterial) {
             object.material = desiredMaterial;
-            object.renderOrder = texturedLabels.includes(label) ? 0 : -100;
+            object.renderOrder = (desiredMaterial === passthroughMaterial) ? -100 : 0;
             object.needsUpdate = true;
           }
         }
