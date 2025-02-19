@@ -5,7 +5,7 @@
     <!-- Origin trial meta tag required for Quest 3 passthrough -->
     <meta http-equiv="origin-trial" content="Ahfj+MLeL6bh+LNmpnSdepftxoDHHwjUG2KWZ4jjCb1WoZxtBlzF3cDHuJNVqnhr3HXJwQ+kLaw57NO15S0mRwwAAABkeyJvcmlnaW4iOiJodHRwczovL2ltbWVyc2l2ZS13ZWIuZ2l0aHViLmlvOjQ0MyIsImZlYXR1cmUiOiJXZWJYUlBsYW5lRGV0ZWN0aW9uIiwiZXhwaXJ5IjoxNjI5ODQ5NTk5fQ==">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AR Occlusion via Mesh Detection (Quest 3) – No Occlusion for Walls</title>
+    <title>AR Wallpaper with Semantic Materials (No Occlusion)</title>
     <style>
       body { margin: 0; overflow: hidden; background: none; }
       canvas { display: block; background: none; }
@@ -34,7 +34,7 @@
       import { RealityAccelerator } from 'https://unpkg.com/ratk@0.3.0';
 
       if (!navigator.xr) {
-        console.error("WebXR is not available on this device/browser.");
+        console.error("WebXR not available on this device/browser.");
       }
       
       // Create the renderer.
@@ -71,8 +71,8 @@
       
       // Set up scene and camera.
       const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 1.6, 0);
+      const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 1.6, 0); // Typical eye level.
       scene.add(camera);
       
       // Initialize RATK for plane and mesh detection.
@@ -103,42 +103,40 @@
         return material;
       }
       
-      // Materials for different surfaces.
+      // Define materials for walls, doors, and windows.
       const wallpaperMaterial = createMaterial({ map: wallpaperTexture });
       const doorMaterial      = createMaterial({ color: 0x8B4513 });   // Brown.
       const windowMaterial    = createMaterial({ color: 0x87CEEB });   // Light blue.
       
-      // Occlusion material used only for non-wall surfaces.
-      const occlusionMaterial = new THREE.MeshBasicMaterial({
-        colorWrite: false,
-        depthWrite: true,
-        depthTest: true,
+      // Passthrough material for everything else.
+      const passthroughMaterial = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
       });
+      passthroughMaterial.colorWrite = false;
       
-      // Update material assignment based on semantic labels.
+      // Update object materials based solely on semantic labels.
+      // Walls get the wallpaper, doors get the door color, and windows get the window color.
       function updateObjectMaterial(object, semanticLabel) {
         if (object && object.geometry) {
           const label = semanticLabel ? semanticLabel.toLowerCase() : "";
-          let desiredMaterial;
+          let desiredMaterial = passthroughMaterial;
           if (label.includes("door")) {
             desiredMaterial = doorMaterial;
           } else if (label.includes("window")) {
             desiredMaterial = windowMaterial;
           } else if (label.includes("wall") || label.includes("wall art")) {
-            // For walls, always use the wallpaper material.
             desiredMaterial = wallpaperMaterial;
-            // Ensure walls are rendered after occlusion objects.
-            object.renderOrder = 1;
-          } else {
-            desiredMaterial = occlusionMaterial;
-            object.renderOrder = -200;
           }
           object.material = desiredMaterial;
           object.needsUpdate = true;
         }
       }
       
-      // Update materials on detected planes and meshes.
+      // Apply the semantic-based material updates.
       ratk.onPlaneAdded = (plane) => {
         if (plane.planeMesh) {
           updateObjectMaterial(plane.planeMesh, plane.semanticLabel);
